@@ -14,17 +14,24 @@ export const uploadApi = {
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
       const filePath = `products/${fileName}`
 
+      // Use product-images bucket (same as mobile app)
       const { error: uploadError } = await supabase.storage
-        .from('images')
-        .upload(filePath, file)
+        .from('product-images')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
 
       if (uploadError) {
+        console.error('Upload error:', uploadError)
         return { success: false, url: '', message: uploadError.message }
       }
 
       const { data: { publicUrl } } = supabase.storage
-        .from('images')
+        .from('product-images')
         .getPublicUrl(filePath)
+
+      console.log('Uploaded image URL:', publicUrl)
 
       return {
         success: true,
@@ -32,6 +39,7 @@ export const uploadApi = {
         publicId: filePath,
       }
     } catch (error: unknown) {
+      console.error('Upload exception:', error)
       return { 
         success: false, 
         url: '', 
