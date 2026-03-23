@@ -7,6 +7,11 @@ export const productApi = {
       // Get auth user
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
       
+      console.log('=== PRODUCTS DEBUG ===')
+      console.log('Auth User ID:', authUser?.id)
+      console.log('Auth User Phone:', authUser?.phone)
+      console.log('Auth Error:', authError)
+      
       if (authError || !authUser) {
         return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
       }
@@ -14,9 +19,12 @@ export const productApi = {
       // Get store by owner ID (auth user ID) - mobile app uses Store table with ownerId = auth user id
       const { data: store, error: storeError } = await supabase
         .from('Store')
-        .select('id')
+        .select('id, name, ownerId')
         .eq('ownerId', authUser.id)
         .single()
+      
+      console.log('Store query result:', store)
+      console.log('Store query error:', storeError)
       
       let storeId = store?.id || null
       
@@ -31,8 +39,11 @@ export const productApi = {
       }
       
       if (!storeId) {
+        console.log('No storeId found')
         return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
       }
+
+      console.log('Store ID found:', storeId)
 
       // Query products from 'products' table (snake_case - used by mobile app)
       const { data, error, count } = await supabase
@@ -40,6 +51,10 @@ export const productApi = {
         .select('id, store_id, name, category, price, images, color, status, created_at, updated_at, stock_count', { count: 'exact' })
         .eq('store_id', storeId)
         .order('created_at', { ascending: false })
+      
+      console.log('Products query result:', data?.length, 'products')
+      console.log('Products query error:', error)
+      console.log('Products count:', count)
       
       if (error) {
         // Try Product table as fallback
