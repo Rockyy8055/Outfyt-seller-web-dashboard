@@ -45,7 +45,7 @@ export const productApi = {
 
       console.log('Store ID found:', storeId)
 
-      // Query products - try without column specification first to see what's there
+      // Query products - use select * to get all available columns
       const { data: allProducts, error: allError } = await supabase
         .from('products')
         .select('*')
@@ -54,7 +54,8 @@ export const productApi = {
       console.log('All products query result:', allProducts)
       console.log('All products query error:', allError)
       
-      if (allError) {
+      if (allError || !allProducts) {
+        console.log('Products table failed, trying Product table')
         // Try Product table
         const { data: productData, error: productError } = await supabase
           .from('Product')
@@ -68,18 +69,18 @@ export const productApi = {
           return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
         }
         
-        const products = productData.map(p => ({
-          id: p.id,
-          storeId: p.storeId,
-          name: p.name,
-          category: p.category,
-          price: p.price,
-          images: p.images || [],
-          color: p.color,
-          status: p.status,
+        const products = productData.map((p: Record<string, unknown>) => ({
+          id: p.id as string,
+          storeId: p.storeId as string,
+          name: p.name as string,
+          category: p.category as string | null,
+          price: p.price as number,
+          images: (p.images as string[]) || [],
+          color: (p.color as string) || null,
+          status: (p.status as string) || 'ACTIVE',
           stock: 0,
-          createdAt: p.createdAt,
-          updatedAt: p.updatedAt,
+          createdAt: p.createdAt as string,
+          updatedAt: p.updatedAt as string,
         })) as Product[]
         
         return {
@@ -96,6 +97,8 @@ export const productApi = {
       
       const data = allProducts
       const count = data?.length || 0
+      
+      console.log('Products found:', count)
 
       // Filter by search/category if provided
       let filteredProducts = data || []
