@@ -1,6 +1,15 @@
 import { supabase } from '@/lib/supabase'
 import { Order, OrderStatus, OrderListResponse, ApiResponse } from '@/types'
 
+function normalizeStorageUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  if (url.includes('/storage/v1/object/public/')) return url
+  if (url.includes('/storage/v1/object/')) {
+    return url.replace('/storage/v1/object/', '/storage/v1/object/public/')
+  }
+  return url
+}
+
 const orderSelect = `
   id,
   storeId,
@@ -119,7 +128,7 @@ export const orderApi = {
           quantity: item.quantity as number,
           unitPrice: item.unitPrice as number,
           offerPercentage: item.offerPercentage as number | null,
-          productImage: item.productImage as string | null,
+          productImage: normalizeStorageUrl(item.productImage as string | null),
           productColor: item.productColor as string | null,
         })),
       })) as Order[]
@@ -180,7 +189,7 @@ export const orderApi = {
             quantity: item.quantity as number,
             unitPrice: item.unitPrice as number,
             offerPercentage: item.offerPercentage as number | null,
-            productImage: item.productImage as string | null,
+            productImage: normalizeStorageUrl(item.productImage as string | null),
             productColor: item.productColor as string | null,
           })),
         } as Order

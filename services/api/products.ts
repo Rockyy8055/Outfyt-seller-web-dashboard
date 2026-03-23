@@ -1,6 +1,20 @@
 import { supabase } from '@/lib/supabase'
 import { Product, ProductFormData, ProductListResponse, BulkUploadResult, PaginationParams, ApiResponse } from '@/types'
 
+function normalizeStorageUrl(url: string): string {
+  if (!url) return url
+  if (url.includes('/storage/v1/object/public/')) return url
+  if (url.includes('/storage/v1/object/')) {
+    return url.replace('/storage/v1/object/', '/storage/v1/object/public/')
+  }
+  return url
+}
+
+function normalizeStorageUrls(urls: unknown): string[] {
+  if (!Array.isArray(urls)) return []
+  return (urls as unknown[]).filter((u): u is string => typeof u === 'string').map(normalizeStorageUrl)
+}
+
 export const productApi = {
   getProducts: async (params: PaginationParams): Promise<ProductListResponse> => {
     try {
@@ -75,7 +89,7 @@ export const productApi = {
           name: p.name as string,
           category: p.category as string | null,
           price: p.price as number,
-          images: (p.images as string[]) || [],
+          images: ((p.images as string[]) || []).map(normalizeStorageUrl),
           color: (p.color as string) || null,
           status: (p.status as string) || 'ACTIVE',
           stock: 0,
@@ -123,7 +137,7 @@ export const productApi = {
           name: p.name,
           category: p.category,
           price: p.price,
-          images: p.images || [],
+          images: (p.images || []).map(normalizeStorageUrl),
           color: p.color,
           status: p.status,
           stock: p.stock_count || 0,
@@ -163,7 +177,7 @@ export const productApi = {
           name: product.name,
           category: product.category,
           price: product.price,
-          images: product.images || [],
+          images: normalizeStorageUrls(product.images),
           color: product.color,
           status: product.status,
           stock: product.stock_count || 0,
@@ -227,7 +241,7 @@ export const productApi = {
           name: data.name,
           category: data.category,
           price: data.price,
-          images: data.images || [],
+          images: normalizeStorageUrls(data.images),
           color: data.color,
           status: data.status,
           stock: data.stock_count || 0,
@@ -267,7 +281,7 @@ export const productApi = {
           name: data.name,
           category: data.category,
           price: data.price,
-          images: data.images || [],
+          images: normalizeStorageUrls(data.images),
           color: data.color,
           status: data.status,
           stock: data.stock_count || 0,
