@@ -31,7 +31,7 @@ export const dashboardApi = {
         return { success: false, message: 'No store found' }
       }
 
-      // Get products count
+      // Get products count from products table
       let productsCount = 0
       const { count } = await supabase
         .from('products')
@@ -40,12 +40,12 @@ export const dashboardApi = {
       
       if (count !== null) productsCount = count
 
-      // Get orders
+      // Get orders from Order table (PascalCase)
       const { data: orders, error: ordersError } = await supabase
-        .from('orders')
-        .select('id, status, total_amount, created_at, order_number')
-        .eq('store_id', storeId)
-        .order('created_at', { ascending: false })
+        .from('Order')
+        .select('id, status, totalAmount, createdAt')
+        .eq('storeId', storeId)
+        .order('createdAt', { ascending: false })
         .limit(5)
 
       let totalOrders = 0
@@ -56,29 +56,29 @@ export const dashboardApi = {
       if (!ordersError && orders) {
         totalOrders = orders.length
         pendingOrders = orders.filter(o => o.status === 'PENDING').length
-        totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0)
+        totalRevenue = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0)
         recentOrders = orders.map(o => ({
           id: o.id,
-          orderNumber: o.order_number,
+          orderNumber: o.id.slice(0, 8).toUpperCase(),
           status: o.status,
-          totalAmount: o.total_amount,
-          createdAt: o.created_at,
+          totalAmount: o.totalAmount,
+          createdAt: o.createdAt,
         })) as Order[]
       }
 
       // Get total orders count
       const { count: orderCount } = await supabase
-        .from('orders')
+        .from('Order')
         .select('id', { count: 'exact', head: true })
-        .eq('store_id', storeId)
+        .eq('storeId', storeId)
       
       if (orderCount !== null) totalOrders = orderCount
 
       // Get pending orders count
       const { count: pendingCount } = await supabase
-        .from('orders')
+        .from('Order')
         .select('id', { count: 'exact', head: true })
-        .eq('store_id', storeId)
+        .eq('storeId', storeId)
         .eq('status', 'PENDING')
       
       if (pendingCount !== null) pendingOrders = pendingCount

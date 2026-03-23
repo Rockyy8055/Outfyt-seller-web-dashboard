@@ -9,7 +9,7 @@ export const storeApi = {
         return { success: false, message: 'Not authenticated' }
       }
 
-      // Get store by owner ID (auth user ID) - mobile app uses this approach
+      // Get store by owner ID (auth user ID) - same as mobile app
       const { data: store, error } = await supabase
         .from('Store')
         .select('*')

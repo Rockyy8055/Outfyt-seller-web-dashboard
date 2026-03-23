@@ -1,10 +1,48 @@
 import { supabase } from '@/lib/supabase'
 import { Order, OrderStatus, OrderListResponse, ApiResponse } from '@/types'
 
+const orderSelect = `
+  id,
+  storeId,
+  userId,
+  otpCode,
+  customerName,
+  customerPhone,
+  status,
+  paymentStatus,
+  paymentMethod,
+  totalAmount,
+  amountReceived,
+  deliveryAddress,
+  deliveryLat,
+  deliveryLng,
+  rejectionReason,
+  packingStartedAt,
+  createdAt,
+  updatedAt,
+  riderId,
+  items:OrderItem(
+    id,
+    orderId,
+    productId,
+    productName,
+    size,
+    quantity,
+    unitPrice,
+    offerPercentage,
+    productImage,
+    productColor
+  )
+`
+
 export const orderApi = {
   getOrders: async (params: { page?: number; limit?: number; status?: string; search?: string }): Promise<OrderListResponse> => {
     try {
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+      
+      console.log('=== ORDERS DEBUG ===')
+      console.log('Auth User ID:', authUser?.id)
+      
       if (authError || !authUser) {
         return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
       }
@@ -18,6 +56,8 @@ export const orderApi = {
 
       let storeId = store?.id || null
       
+      console.log('Store ID:', storeId)
+      
       if (storeError || !storeId) {
         const result = await supabase
           .from('stores')
@@ -28,68 +68,65 @@ export const orderApi = {
       }
 
       if (!storeId) {
+        console.log('No storeId found')
         return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
       }
 
-      // Query orders from orders table (snake_case)
+      // Query orders from Order table (PascalCase - same as mobile app)
       let query = supabase
-        .from('orders')
-        .select('id, order_number, status, total_amount, payment_method, payment_status, created_at, customer_name, customer_phone, delivery_address, delivery_lat, delivery_lng, otp_code', { count: 'exact' })
-        .eq('store_id', storeId)
+        .from('Order')
+        .select(orderSelect, { count: 'exact' })
+        .eq('storeId', storeId)
 
       if (params.status) query = query.eq('status', params.status)
-      if (params.search) query = query.ilike('order_number', `%${params.search}%`)
+      if (params.search) query = query.ilike('customerName', `%${params.search}%`)
 
       const from = ((params.page || 1) - 1) * (params.limit || 10)
       const to = from + (params.limit || 10) - 1
 
-      const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, to)
+      const { data, error, count } = await query.order('createdAt', { ascending: false }).range(from, to)
 
-      if (error || !data) {
+      console.log('Orders query result:', data?.length)
+      console.log('Orders query error:', error)
+
+      if (error) {
         return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
       }
 
-      // Get order items for each order
-      const ordersWithItems = await Promise.all(data.map(async (o) => {
-        const itemsResult = await supabase
-          .from('order_items')
-          .select('id, product_id, product_name, size, quantity, unit_price, offer_percentage, product_image, product_color')
-          .eq('order_id', o.id)
-
-        const items = itemsResult.data?.map(item => ({
-          id: item.id,
-          orderId: o.id,
-          productId: item.product_id,
-          productName: item.product_name,
-          size: item.size,
-          quantity: item.quantity,
-          unitPrice: item.unit_price,
-          offerPercentage: item.offer_percentage,
-          productImage: item.product_image,
-          productColor: item.product_color,
-        })) || []
-
-        return {
-          id: o.id,
-          orderNumber: o.order_number,
-          status: o.status,
-          totalAmount: o.total_amount,
-          paymentMethod: o.payment_method,
-          paymentStatus: o.payment_status,
-          createdAt: o.created_at,
-          customerName: o.customer_name,
-          customerPhone: o.customer_phone,
-          deliveryAddress: o.delivery_address,
-          deliveryLat: o.delivery_lat,
-          deliveryLng: o.delivery_lng,
-          otpCode: o.otp_code,
-          items,
-        } as Order
-      }))
+      const orders = (data || []).map(o => ({
+        id: o.id,
+        orderNumber: o.id.slice(0, 8).toUpperCase(),
+        storeId: o.storeId,
+        userId: o.userId,
+        status: o.status,
+        paymentMethod: o.paymentMethod || 'COD',
+        paymentStatus: o.paymentStatus,
+        totalAmount: o.totalAmount,
+        customerName: o.customerName,
+        customerPhone: o.customerPhone,
+        deliveryAddress: o.deliveryAddress,
+        deliveryLat: o.deliveryLat,
+        deliveryLng: o.deliveryLng,
+        otpCode: o.otpCode,
+        rejectionReason: o.rejectionReason,
+        createdAt: o.createdAt,
+        items: (o.items || []).map((item: Record<string, unknown>) => ({
+          id: item.id as string,
+          orderId: item.orderId as string,
+          productId: item.productId as string,
+          productName: item.productName as string,
+          size: item.size as string,
+          quantity: item.quantity as number,
+          unitPrice: item.unitPrice as number,
+          offerPercentage: item.offerPercentage as number | null,
+          productImage: item.productImage as string | null,
+          productColor: item.productColor as string | null,
+        })),
+      })) as Order[]
 
       return {
         success: true,
-        data: ordersWithItems,
+        data: orders,
         pagination: {
           page: params.page || 1,
           limit: params.limit || 10,
@@ -98,7 +135,7 @@ export const orderApi = {
         },
       }
     } catch (err) {
-      console.error('Error fetching orders:', err)
+      console.error('Exception in getOrders:', err)
       return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
     }
   },
@@ -106,8 +143,8 @@ export const orderApi = {
   getOrder: async (id: string): Promise<ApiResponse<Order>> => {
     try {
       const { data: order, error } = await supabase
-        .from('orders')
-        .select('*')
+        .from('Order')
+        .select(orderSelect)
         .eq('id', id)
         .single()
 
@@ -115,43 +152,38 @@ export const orderApi = {
         return { success: false, message: error?.message || 'Order not found' }
       }
 
-      // Get order items
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('*')
-        .eq('order_id', id)
-
       return {
         success: true,
         data: {
           id: order.id,
-          orderNumber: order.order_number,
+          orderNumber: order.id.slice(0, 8).toUpperCase(),
+          storeId: order.storeId,
+          userId: order.userId,
           status: order.status,
-          totalAmount: order.total_amount,
-          paymentMethod: order.payment_method,
-          paymentStatus: order.payment_status,
-          createdAt: order.created_at,
-          customerName: order.customer_name,
-          customerPhone: order.customer_phone,
-          deliveryAddress: order.delivery_address,
-          deliveryLat: order.delivery_lat,
-          deliveryLng: order.delivery_lng,
-          otpCode: order.otp_code,
-          storeId: order.store_id,
-          userId: order.customer_id,
-          items: items?.map(item => ({
-            id: item.id,
-            orderId: item.order_id,
-            productId: item.product_id,
-            productName: item.product_name,
-            size: item.size,
-            quantity: item.quantity,
-            unitPrice: item.unit_price,
-            offerPercentage: item.offer_percentage,
-            productImage: item.product_image,
-            productColor: item.product_color,
-          })) || [],
-        } as Order,
+          paymentMethod: order.paymentMethod || 'COD',
+          paymentStatus: order.paymentStatus,
+          totalAmount: order.totalAmount,
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          deliveryAddress: order.deliveryAddress,
+          deliveryLat: order.deliveryLat,
+          deliveryLng: order.deliveryLng,
+          otpCode: order.otpCode,
+          rejectionReason: order.rejectionReason,
+          createdAt: order.createdAt,
+          items: (order.items || []).map((item: Record<string, unknown>) => ({
+            id: item.id as string,
+            orderId: item.orderId as string,
+            productId: item.productId as string,
+            productName: item.productName as string,
+            size: item.size as string,
+            quantity: item.quantity as number,
+            unitPrice: item.unitPrice as number,
+            offerPercentage: item.offerPercentage as number | null,
+            productImage: item.productImage as string | null,
+            productColor: item.productColor as string | null,
+          })),
+        } as Order
       }
     } catch (err) {
       return { success: false, message: err instanceof Error ? err.message : 'Failed to get order' }
@@ -161,8 +193,8 @@ export const orderApi = {
   updateOrderStatus: async (id: string, status: OrderStatus): Promise<ApiResponse<Order>> => {
     try {
       const { data, error } = await supabase
-        .from('orders')
-        .update({ status })
+        .from('Order')
+        .update({ status, updatedAt: new Date().toISOString() })
         .eq('id', id)
         .select()
         .single()
