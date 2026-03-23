@@ -10,16 +10,19 @@ export interface UploadResponse {
 export const uploadApi = {
   uploadImage: async (file: File): Promise<UploadResponse> => {
     try {
-      const fileExt = file.name.split('.').pop()
+      const fileExt = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
-      const filePath = `products/${fileName}`
+      const filePath = fileName  // No subfolder - same as mobile app
+
+      // Determine content type
+      const contentType = fileExt === 'jpg' ? 'image/jpeg' : `image/${fileExt}`
 
       // Use product-images bucket (same as mobile app)
       const { error: uploadError } = await supabase.storage
         .from('product-images')
         .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
+          contentType,
+          upsert: true
         })
 
       if (uploadError) {
