@@ -45,30 +45,30 @@ export const productApi = {
 
       console.log('Store ID found:', storeId)
 
-      // Query products from 'products' table (snake_case - used by mobile app)
-      const { data, error, count } = await supabase
+      // Query products - try without column specification first to see what's there
+      const { data: allProducts, error: allError } = await supabase
         .from('products')
-        .select('id, store_id, name, category, price, images, color, status, created_at, updated_at, stock_count', { count: 'exact' })
+        .select('*')
         .eq('store_id', storeId)
-        .order('created_at', { ascending: false })
       
-      console.log('Products query result:', data?.length, 'products')
-      console.log('Products query error:', error)
-      console.log('Products count:', count)
+      console.log('All products query result:', allProducts)
+      console.log('All products query error:', allError)
       
-      if (error) {
-        // Try Product table as fallback
-        const result2 = await supabase
+      if (allError) {
+        // Try Product table
+        const { data: productData, error: productError } = await supabase
           .from('Product')
-          .select('id, storeId, name, category, price, images, color, status, createdAt, updatedAt', { count: 'exact' })
+          .select('*')
           .eq('storeId', storeId)
-          .order('createdAt', { ascending: false })
         
-        if (result2.error || !result2.data) {
+        console.log('Product table result:', productData)
+        console.log('Product table error:', productError)
+        
+        if (productError || !productData) {
           return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
         }
         
-        const products = result2.data.map(p => ({
+        const products = productData.map(p => ({
           id: p.id,
           storeId: p.storeId,
           name: p.name,
@@ -88,11 +88,14 @@ export const productApi = {
           pagination: {
             page: params.page || 1,
             limit: params.limit || 10,
-            total: result2.count || products.length,
-            totalPages: Math.ceil((result2.count || products.length) / (params.limit || 10)),
+            total: products.length,
+            totalPages: Math.ceil(products.length / (params.limit || 10)),
           },
         }
       }
+      
+      const data = allProducts
+      const count = data?.length || 0
 
       // Filter by search/category if provided
       let filteredProducts = data || []
