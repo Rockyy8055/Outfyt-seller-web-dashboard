@@ -56,36 +56,109 @@ export const orderApi = {
         return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
       }
 
-      // Get store by owner ID (auth user ID)
-      const { data: store, error: storeError } = await supabase
+      // Try to get store ID from multiple possible table/column name combinations
+      let storeId: string | null = null
+      
+      // Try PascalCase Store table with ownerId
+      const { data: store1 } = await supabase
         .from('Store')
         .select('id')
         .eq('ownerId', authUser.id)
-        .single()
-
-      let storeId = store?.id || null
+        .maybeSingle()
       
-      console.log('Store ID:', storeId)
+      if (store1?.id) {
+        storeId = store1.id
+        console.log('Found store in Store table:', storeId)
+      }
       
-      if (storeError || !storeId) {
-        const result = await supabase
+      // Try snake_case stores table with owner_id
+      if (!storeId) {
+        const { data: store2 } = await supabase
           .from('stores')
           .select('id')
           .eq('owner_id', authUser.id)
-          .single()
-        storeId = result.data?.id || null
+          .maybeSingle()
+        
+        if (store2?.id) {
+          storeId = store2.id
+          console.log('Found store in stores table:', storeId)
+        }
       }
-
+      
+      // Try store table with ownerId
       if (!storeId) {
-        console.log('No storeId found')
-        return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
+        const { data: store3 } = await supabase
+          .from('store')
+          .select('id')
+          .eq('ownerId', authUser.id)
+          .maybeSingle()
+        
+        if (store3?.id) {
+          storeId = store3.id
+          console.log('Found store in store table:', storeId)
+        }
       }
+      
+      console.log('Final Store ID:', storeId)
 
-      // Query orders from Order table (PascalCase - same as mobile app)
-      let query = supabase
-        .from('Order')
-        .select(orderSelect, { count: 'exact' })
-        .eq('storeId', storeId)
+      // Build query - try different table names for Order
+      let query: any
+      let orderTableName = 'Order'
+      
+      // First try PascalCase Order table
+      let testQuery = supabase.from('Order').select('id', { head: true }).limit(1)
+      let { error: testError } = await testQuery
+      
+      if (testError) {
+        // Try lowercase order table
+        testQuery = supabase.from('order').select('id', { head: true }).limit(1)
+        const { error: testError2 } = await testQuery
+        
+        if (!testError2) {
+          orderTableName = 'order'
+        } else {
+          // Try orders table
+          testQuery = supabase.from('orders').select('id', { head: true }).limit(1)
+          const { error: testError3 } = await testQuery
+          if (!testError3) {
+            orderTableName = 'orders'
+          }
+        }
+      }
+      
+      console.log('Using Order table name:', orderTableName)
+
+      // Build the select query
+      const selectFields = `
+        id,
+        storeId,
+        userId,
+        otpCode,
+        customerName,
+        customerPhone,
+        status,
+        paymentStatus,
+        paymentMethod,
+        totalAmount,
+        amountReceived,
+        deliveryAddress,
+        deliveryLat,
+        deliveryLng,
+        rejectionReason,
+        packingStartedAt,
+        createdAt,
+        updatedAt,
+        riderId
+      `
+
+      query = supabase
+        .from(orderTableName)
+        .select(selectFields, { count: 'exact' })
+
+      // Only filter by storeId if we found one
+      if (storeId) {
+        query = query.eq('storeId', storeId)
+      }
 
       if (params.status) query = query.eq('status', params.status)
       if (params.search) query = query.ilike('customerName', `%${params.search}%`)
@@ -99,10 +172,25 @@ export const orderApi = {
       console.log('Orders query error:', error)
 
       if (error) {
+        console.error('Orders query error:', error)
         return { success: false, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } }
       }
 
-      const orders = (data || []).map(o => ({
+      // Fetch order items separately for each order
+      const ordersWithItems = await Promise.all((data || []).map(async (o) => {
+        // Try to get items from OrderItem table
+        const { data: items } = await supabase
+          .from('OrderItem')
+          .select('id, orderId, productId, productName, size, quantity, unitPrice, offerPercentage, productImage, productColor')
+          .eq('orderId', o.id)
+        
+        return {
+          ...o,
+          items: items || []
+        }
+      }))
+
+      const orders = ordersWithItems.map(o => ({
         id: o.id,
         orderNumber: o.id.slice(0, 8).toUpperCase(),
         storeId: o.storeId,
